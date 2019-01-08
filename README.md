@@ -1,6 +1,6 @@
 # Add AdGuard, Easylist and EasyPrivacy wildcard support to Pi-Hole
 
-Filter lists are not supported by Pi-hole as they use a more advanced format that simply hostname and IP. It is, however, possible and beneficial to make use of the extracted domains for wildcard blocking with DNSMASQ / FTL.
+Filter lists are not supported by Pi-hole as they use a more advanced format than DNS entries. It is, however, possible and beneficial to make use of the extracted domains from these filter lists for wildcard blocking with DNSMASQ / FTL.
 
 Extraction source: https://github.com/justdomains/blocklists
 
