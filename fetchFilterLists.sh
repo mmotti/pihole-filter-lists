@@ -64,7 +64,7 @@ echo "--> $(wc -l <<< "$filtered") hosts fetched"
 # Extract domains for existing .conf files (except for filter-lists.conf)
 echo "--> Parsing existing dnsmasq configs"
 existing_domains=$(find /etc/dnsmasq.d -type f -name "*.conf" -not -name $file_name -print0 |
-        xargs -r0 grep -hE '^address=\/.+\/(([0-9]+\.){3}[0-9]+|#)?$' |
+        xargs -r0 grep -hE '^address=\/.+\/(([0-9]+\.){3}[0-9]+|::|#)?$' |
                 cut -d'/' -f2 |
                         sort -u)
 
