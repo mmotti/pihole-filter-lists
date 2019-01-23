@@ -41,7 +41,7 @@ invertMatchConflicts () {
 
 #### Fetch hosts #####
 
-echo "--> Fetching hosts"
+echo "[i] Fetching hosts"
 
 # Fetch the hosts
 # Remove duplicates
@@ -52,17 +52,17 @@ filtered=$(curl -s https://raw.githubusercontent.com/justdomains/blocklists/mast
 # Exit if there are no domains
 # Or an issue occured with downloading
 if [[ -z "$filtered" ]]; then
-        echo "--> An error occured whilst trying to fetch filter lists"
+        echo "[i] An error occured whilst trying to fetch filter lists"
         exit
 fi
 
 # Output the current host count
-echo "--> $(wc -l <<< "$filtered") hosts fetched"
+echo "[i] $(wc -l <<< "$filtered") hosts fetched"
 
 #### Capture existing domains ####
 
 # Extract domains for existing .conf files (except for filter-lists.conf)
-echo "--> Parsing existing dnsmasq configs"
+echo "[i] Parsing existing dnsmasq configs"
 existing_domains=$(find /etc/dnsmasq.d -type f -name "*.conf" -not -name $file_name -print0 |
         xargs -r0 grep -hE '^address=\/.+\/(([0-9]+\.){3}[0-9]+|::|#)?$' |
                 cut -d'/' -f2 |
@@ -70,7 +70,7 @@ existing_domains=$(find /etc/dnsmasq.d -type f -name "*.conf" -not -name $file_n
 
 ###### Output format checks ######
 
-echo "--> Determining output format"
+echo "[i] Determining output format"
 
 # Check for IPv6 Address
 IPv6_enabled=$(grep -F "IPV6_ADDRESS=" $file_setupVars |
@@ -117,7 +117,7 @@ esac
 
 #### Remove subdomains from fetched hosts and existing domains ####
 
-echo "--> Removing unnecessary subdomains"
+echo "[i] Removing unnecessary subdomains"
 
 # Remove unnecessary subdomains
 # Reverse, sort, awk, rev, sort, convert to dnsmasq
@@ -132,7 +132,7 @@ existing_domains=$(echo "$existing_domains" | rev | LC_ALL=C sort |
 # If there is a regex.list, process it
 if [ -s $file_regex ]; then
 	# Status update
-	echo "--> Running regex removals from $file_regex"
+	echo "[i] Running regex removals from $file_regex"
 	# Grab the pre-removal count
 	count_pre_regex=$(wc -l <<< "$cleaned_hosts")
 	# Remove comments from regex.list
@@ -145,9 +145,9 @@ if [ -s $file_regex ]; then
 		# Count the regex removals
         	count_regex_removals=$(($count_pre_regex-$(wc -l <<< "$cleaned_hosts")))
 		# Status update
-        	echo "--> $count_regex_removals hosts regex removed"
+        	echo "[i] $count_regex_removals hosts regex removed"
 	else
-        	echo "--> 0 hosts remain after regex removals"
+        	echo "[i] 0 hosts remain after regex removals"
         	exit
 	fi
 fi
@@ -157,7 +157,7 @@ fi
 # Remove hosts that appear in other dnsmasq files
 if [ -n "$existing_domains" ]; then
 	# Status update
-	echo "--> Checking for conflicts against existing config"
+	echo "[i] Checking for conflicts against existing config"
 	# Grab the current count of cleaned_hosts
 	count_cleaned_hosts=$(wc -l <<< "$cleaned_hosts")
 	# Invert match existing hosts -> cleaned hosts
@@ -167,7 +167,7 @@ if [ -n "$existing_domains" ]; then
 
 	# Conditional exit
 	if [ -z "$cleaned_hosts" ]; then
-		echo "--> 0 hosts remain after removing conflicts"
+		echo "[i] 0 hosts remain after removing conflicts"
 		exit
 	fi
 
@@ -180,20 +180,20 @@ if [ -n "$existing_domains" ]; then
 
 	# Conditional exit
 	if [ -z "$cleaned_hosts" ]; then
-		echo "--> 0 hosts remain after removing conflicts"
+		echo "[i] 0 hosts remain after removing conflicts"
 		exit
 	fi
 
        	# Grab the removal count
 	count_post_exist=$(($count_cleaned_hosts-$(wc -l <<< "$cleaned_hosts")))
 	# Status update (how many hosts did we identify as unnecessary)
-	echo "--> $count_post_exist hosts matched against existing conf entries"
+	echo "[i] $count_post_exist hosts matched against existing conf entries"
 fi
 
 #### Remove whitelist conflicts ####
 
 if [ -s $file_whitelist ]; then
-        echo "--> Processing whitelist"
+        echo "[i] Processing whitelist"
         # Grab the current domain count
         count_pre_whitelist_rm=$(wc -l <<< "$cleaned_hosts")
 	# Reverse and sort the Pihole whitelist
@@ -204,21 +204,21 @@ if [ -s $file_whitelist ]; then
         # Conditional status update / exit
         if [ -n "$cleaned_hosts" ]; then
                 # Status update
-                echo "--> $((($count_pre_whitelist_rm-$(wc -l <<< "$cleaned_hosts")))) conflicts with whitelist"
+                echo "[i] $((($count_pre_whitelist_rm-$(wc -l <<< "$cleaned_hosts")))) conflicts with whitelist"
         else
-                echo "--> 0 domains remain after processing whitelist conflicts"
+                echo "[i] 0 domains remain after processing whitelist conflicts"
                 exit
         fi
 fi
 
-echo "--> Outputting $(wc -l <<< "$cleaned_hosts") hosts to $file_out"
+echo "[i] Outputting $(wc -l <<< "$cleaned_hosts") hosts to $file_out"
 
 echo "$cleaned_hosts" |
 	awk -v mode="$blockingMode" 'BEGIN{n=split(mode, modearr, " ")}n>0{for(m in modearr)print "address=/"$0"/"modearr[m]; next} {print "address=/"$0"/"}' |
 		sudo tee $file_out > /dev/null
 
 # Restart FTL service
-echo "--> Restarting Pihole service"
+echo "[i] Restarting Pihole service"
 sudo service pihole-FTL restart
 
 exit
