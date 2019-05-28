@@ -1,95 +1,76 @@
 #!/usr/bin/env bash
 
-# Define output file
-file_name="filter-lists.conf"
-file_out="/etc/dnsmasq.d/$file_name"
+# Variables
+dir_dnsmasq='/etc/dnsmasq.d'
+file_output="$dir_dnsmasq/filter_lists.conf"
+file_regex='/etc/pihole/regex.list'
+file_whitelist='/etc/pihole/whitelist.txt'
+file_setupVars='/etc/pihole/setupVars.conf'
+file_ftl='/etc/pihole/pihole-FTL.conf'
 
-# Define regex input
-file_regex="/etc/pihole/regex.list"
+# Fetch domains
+echo '[i] Fetching domains'
+filter_domains=$(curl -s https://raw.githubusercontent.com/justdomains/blocklists/master/lists/{adguarddns,easylist,easyprivacy}-justdomains.txt |
+	sort -u)
 
-# Define pihole conf files
-file_setupVars="/etc/pihole/setupVars.conf"
-file_ftl="/etc/pihole/pihole-FTL.conf"
-file_whitelist="/etc/pihole/whitelist.txt"
+# Conditional exit in the event that no domains are fetched
+[ -z "$filter_domains" ] && echo '[i] An error occured when fetching the filter domains' && exit
 
-#### Functions ####
+# Identify existing local wildcards
+echo '[i] Parsing existing wildcard config (DNSMASQ)'
+existing_wildcards=$(find $dir_dnsmasq -type f -name '*.conf' -not -name 'filter-lists.conf' -print0 |
+	xargs -r0 grep -hE '^address=\/.+\/(([0-9]{1,3}\.){3}[0-9]{1,3}|::|#)?$' |
+		cut -d '/' -f2 |
+			sort -u)
 
-invertMatchConflicts () {
+# Remove subdomains where root domains are also present
+echo '[i] Cleaning domains'
+cleaned_filter_domains=$(echo "$filter_domains" | rev | LC_ALL=C sort |
+	 awk -F'.' 'index($0,prev FS)!=1{ print; prev=$0 }' | rev | sort)
+cleaned_existing_wildcards=$(echo "$existing_wildcards" | rev | LC_ALL=C sort |
+	awk -F'.' 'index($0,prev FS)!=1{ print; prev=$0 }' | rev | sort)
 
-	# Conditional exit
-	# Return supplied match criteria (all domains)
-	if [ -z "$1" ] || [ -z "$2" ]; then
-		echo "$2"
-		return 1
-	fi
-
-	# Convert target - something.com -> ^something.com$
-        match_target=$(sed 's/^/\^/;s/$/\$/' <<< "$2")
-        # Convert exact domains (pattern source) - something.com -> ^something.com$
-        exact_domains=$(sed 's/^/\^/;s/$/\$/' <<< "$1")
-        # Convert wildcard domains (pattern source) - something.com - .something.com$
-        wildcard_domains=$(sed 's/^/\./;s/$/\$/' <<< "$1")
-	# Combine exact and wildcard matches
-        match_patterns=$(printf '%s\n' "$exact_domains" "$wildcard_domains")
-
-	# Invert match wildcards
-        # Invert match exact domains
-        # Remove start / end markers
-        grep -vFf <(echo "$match_patterns") <<< "$match_target" |
-			sed 's/[\^$]//g'
-}
-
-#### Fetch hosts #####
-
-echo "[i] Fetching hosts"
-
-# Fetch the hosts
-# Remove duplicates
-# Remove whitelisted items
-filtered=$(curl -s https://raw.githubusercontent.com/justdomains/blocklists/master/lists/{adguarddns,easylist,easyprivacy}-justdomains.txt |
-         sort -u)
-
-# Exit if there are no domains
-# Or an issue occured with downloading
-if [[ -z "$filtered" ]]; then
-        echo "[i] An error occured whilst trying to fetch filter lists"
-        exit
+# Regex remove unnecessary domains
+if [ -s $file_regex ]; then
+	echo '[i] Removing regex.list conflicts'
+	file_regex=$(grep '^[^#]' $file_regex)
+	cleaned_filter_domains=$(grep -vEf <(echo "$file_regex") <<<"$cleaned_filter_domains")
+	# Conditional exit if no hosts remain after cleanup
+	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after regex removals.' && exit
 fi
 
-# Output the current host count
-echo "[i] $(wc -l <<< "$filtered") hosts fetched"
+# Process conflicts between filter domains and existing wildcards
+if [ -n "$cleaned_existing_wildcards" ]; then
+	echo '[i] Checking for local wildcard conflicts'
+	# Add filterList domains to awk array
+	# Check whether the exact wildcard entry is in filterList
+	# For each wildcard, iterate through each filterList domain and check whether it's a subdomain of the current wildcard.
+	# Existing Wildcards --> filterList
+	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")){badDoms[d];break}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev <<< "$cleaned_existing_wildcards" | sort) | rev | sort)
+	# filterList <-- Existing Wildcards
+	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index($0, d".")){badDoms[d];break}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev <<< "$cleaned_existing_wildcards" | sort) | rev | sort)
+	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
+fi
 
-#### Capture existing domains ####
+# Process whitelist matches
+if [ -s $file_whitelist ]; then
+	echo '[i] Checking whitelist conflicts'
+	# Whitelist --> filterList
+	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")){badDoms[d];break}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
+	# filterList <-- Whitelist
+	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index($0, d".")){badDoms[d];break}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
+fi
 
-# Extract domains for existing .conf files (except for filter-lists.conf)
-echo "[i] Parsing existing dnsmasq configs"
-existing_domains=$(find /etc/dnsmasq.d -type f -name "*.conf" -not -name $file_name -print0 |
-        xargs -r0 grep -hE '^address=\/.+\/(([0-9]+\.){3}[0-9]+|::|#)?$' |
-                cut -d'/' -f2 |
-                        sort -u)
-
-###### Output format checks ######
-
+# Start determining output format
 echo "[i] Determining output format"
-
 # Check for IPv6 Address
-IPv6_enabled=$(grep -F "IPV6_ADDRESS=" $file_setupVars |
-	cut -d'=' -f2 |
-		cut -d'/' -f1)
-
+IPv6_enabled=$(grep -F "IPV6_ADDRESS=" $file_setupVars | cut -d'=' -f2 | cut -d'/' -f1)
 # Check for IPv4 Address
-IPv4_enabled=$(grep -F "IPV4_ADDRESS=" $file_setupVars |
-	cut -d'=' -f2 |
-		cut -d'/' -f1)
-
+IPv4_enabled=$(grep -F "IPV4_ADDRESS=" $file_setupVars |cut -d'=' -f2 | cut -d'/' -f1)
 # Check for blocking mode
-blockingMode=$(grep -F "BLOCKINGMODE=" $file_ftl |
-	cut -d'=' -f2)
-
+blockingMode=$(grep -F "BLOCKINGMODE=" $file_ftl | cut -d'=' -f2)
 # Revert to NULL blocking if it is not specificed
-if [ -z "$blockingMode" ]; then
-        blockingMode="NULL"
-fi
+[ -z "$blockingMode" ] && blockingMode="NULL"
 
 # Switch statement for blocking mode
 case "$blockingMode" in
@@ -108,117 +89,19 @@ case "$blockingMode" in
 
         "IP")
                 blockingMode=$IPv4_enabled
-
-                if [ -n "$IPv6_enabled" ]; then
-                        blockingMode+=" "$IPv6_enabled
-                fi
+                [ -n "$IPv6_enabled" ] && blockingMode+=' '$IPv6_enabled
         ;;
 esac
 
-#### Remove subdomains from fetched hosts and existing domains ####
-
-echo "[i] Removing unnecessary subdomains"
-
-# Remove unnecessary subdomains
-# Reverse, sort, awk, rev, sort, convert to dnsmasq
-cleaned_hosts=$(echo "$filtered" | rev | LC_ALL=C sort |
-	 awk -F'.' 'index($0,prev FS)!=1{ print; prev=$0 }' | rev | sort)
-
-existing_domains=$(echo "$existing_domains" | rev | LC_ALL=C sort |
-         awk -F'.' 'index($0,prev FS)!=1{ print; prev=$0 }' | rev | sort)
-
-#### Regex remove unnecessary domains ####
-
-# If there is a regex.list, process it
-if [ -s $file_regex ]; then
-	# Status update
-	echo "[i] Running regex removals from $file_regex"
-	# Grab the pre-removal count
-	count_pre_regex=$(wc -l <<< "$cleaned_hosts")
-	# Remove comments from regex.list
-	regex_stripped=$(grep '^[^#]' $file_regex)
-	# Invert match against regex.list
-	cleaned_hosts=$(grep -vEf <(echo "$regex_stripped") <<< "$cleaned_hosts")
-
-	# Conditional exit
-	if [ -n "$cleaned_hosts" ]; then
-		# Count the regex removals
-        	count_regex_removals=$(($count_pre_regex-$(wc -l <<< "$cleaned_hosts")))
-		# Status update
-        	echo "[i] $count_regex_removals hosts regex removed"
-	else
-        	echo "[i] 0 hosts remain after regex removals"
-        	exit
-	fi
-fi
-
-#### Process conflicts between new and existing hosts ####
-
-# Remove hosts that appear in other dnsmasq files
-if [ -n "$existing_domains" ]; then
-	# Status update
-	echo "[i] Checking for conflicts against existing config"
-	# Grab the current count of cleaned_hosts
-	count_cleaned_hosts=$(wc -l <<< "$cleaned_hosts")
-	# Invert match existing hosts -> cleaned hosts
-	# Example:
-	# Remove *.something.com from $cleaned_hosts
-	cleaned_hosts=$(invertMatchConflicts "$existing_domains" "$cleaned_hosts")
-
-	# Conditional exit
-	if [ -z "$cleaned_hosts" ]; then
-		echo "[i] 0 hosts remain after removing conflicts"
-		exit
-	fi
-
-	# Remove conflicting root domains (existing domains as priority)
-	# Example:
-	# Existing - test.something.com
-	# New      - something.com
-	# Decision: Remove something.com
-	cleaned_hosts=$(awk 'NR==FNR{cleaned_hosts[$0];next}{for(i in cleaned_hosts)if(index($0, i".")){badDoms[i];break}}END{for(d in cleaned_hosts)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_hosts" | LC_ALL=C sort)  <(rev <<< "$existing_domains" | LC_ALL=C sort) | rev)
-
-	# Conditional exit
-	if [ -z "$cleaned_hosts" ]; then
-		echo "[i] 0 hosts remain after removing conflicts"
-		exit
-	fi
-
-       	# Grab the removal count
-	count_post_exist=$(($count_cleaned_hosts-$(wc -l <<< "$cleaned_hosts")))
-	# Status update (how many hosts did we identify as unnecessary)
-	echo "[i] $count_post_exist hosts matched against existing conf entries"
-fi
-
-#### Remove whitelist conflicts ####
-
-if [ -s $file_whitelist ]; then
-        echo "[i] Processing whitelist"
-        # Grab the current domain count
-        count_pre_whitelist_rm=$(wc -l <<< "$cleaned_hosts")
-	# Reverse and sort the Pihole whitelist
-	whitelist_domains=$(rev $file_whitelist | LC_ALL=C sort)
-        # Check for exact matches or domains that conflict with whitelist entries
-        cleaned_hosts=$(awk 'NR==FNR{cleaned_hosts[$0];next}$0 in cleaned_hosts{badDoms[$0];next}{for(i in cleaned_hosts)if(index($0, i".")){badDoms[i];break}}END{for(d in cleaned_hosts)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_hosts" | LC_ALL=C sort)  <(echo "$whitelist_domains") | rev)^
-
-        # Conditional status update / exit
-        if [ -n "$cleaned_hosts" ]; then
-                # Status update
-                echo "[i] $((($count_pre_whitelist_rm-$(wc -l <<< "$cleaned_hosts")))) conflicts with whitelist"
-        else
-                echo "[i] 0 domains remain after processing whitelist conflicts"
-                exit
-        fi
-fi
-
-echo "[i] Outputting $(wc -l <<< "$cleaned_hosts") hosts to $file_out"
-
-echo "$cleaned_hosts" |
+# Construct output
+echo '[i] Constructing output'
+echo "$cleaned_filter_domains" |
 	awk -v mode="$blockingMode" 'BEGIN{n=split(mode, modearr, " ")}n>0{for(m in modearr)print "address=/"$0"/"modearr[m]; next} {print "address=/"$0"/"}' |
-		sudo tee $file_out > /dev/null
+sudo tee $file_output > /dev/null
 
-# Restart FTL service
-echo "[i] Restarting Pihole service"
+# Some stats
+echo '[i]' $(wc -l <<< "$cleaned_filter_domains") 'domains added to' $file_output
+
+# Restart FTL
+echo '[i] Restarting FTL'
 sudo service pihole-FTL restart
-
-exit
