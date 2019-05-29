@@ -30,6 +30,20 @@ exit
 ### Running the script
 Enter `fetchFilterLists.sh`
 
+### Example output
+```
+[i] Fetching domains
+[i] Parsing existing wildcard config (DNSMASQ)
+[i] Cleaning domains
+[i] Removing regex.list conflicts
+[i] Checking for local wildcard conflicts
+[i] Checking whitelist conflicts
+[i] Determining output format
+[i] Constructing output
+[i] 31451 domains added to /etc/dnsmasq.d/filter_lists.conf
+[i] Restarting FTL
+```
+
 ### Updating automatically with cron.d
 The instructions below will install a cron.d job to run each night at 3:40am
 1. `sudo nano /etc/cron.d/fetchFilterLists`
