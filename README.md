@@ -1,6 +1,6 @@
-# Add AdGuard, Easylist, EasyPrivacy and NoCoin wildcard support to Pi-Hole
+# AdGuard, Easylist, EasyPrivacy and NoCoin wildcard support for Pi-Hole
 
-Filter lists are not supported by Pi-hole as they use a more advanced format than DNS entries. It is, however, possible and beneficial to make use of the extracted domains from these filter lists for wildcard blocking with DNSMASQ / FTL.
+Filter lists are not supported by Pi-hole as they require a more advanced format than standard DNS entries. It is, however, possible (and beneficial) to make use of the extracted wildcard domains from these filter lists.
 
 Extraction source: https://github.com/justdomains/blocklists
 
@@ -15,6 +15,15 @@ All commands will need to be entered via Terminal (PuTTY or your SSH client of c
 sudo bash
 wget -qO /usr/local/bin/fetchFilterLists.sh https://raw.githubusercontent.com/mmotti/pihole-filter-lists/master/fetchFilterLists.sh
 chmod +x /usr/local/bin/fetchFilterLists.sh
+exit
+```
+
+### Uninstall
+```
+sudo bash
+rm -f /usr/local/bin/fetchFilterLists.sh
+rm -f /etc/cron.d/fetchFilterLists
+service pihole-FTL restart
 exit
 ```
 
