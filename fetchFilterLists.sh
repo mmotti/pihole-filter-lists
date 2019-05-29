@@ -10,7 +10,7 @@ file_ftl='/etc/pihole/pihole-FTL.conf'
 
 # Fetch domains
 echo '[i] Fetching domains'
-filter_domains=$(curl -s https://raw.githubusercontent.com/justdomains/blocklists/master/lists/{adguarddns,easylist,easyprivacy}-justdomains.txt |
+filter_domains=$(curl -s https://raw.githubusercontent.com/justdomains/blocklists/master/lists/{adguarddns,easylist,easyprivacy,nocoin}-justdomains.txt |
 	sort -u)
 
 # Conditional exit in the event that no domains are fetched
