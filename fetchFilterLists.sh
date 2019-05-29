@@ -59,35 +59,42 @@ if [ -s $file_whitelist ]; then
 fi
 
 # Start determining output format
-echo "[i] Determining output format"
+echo '[i] Determining output format'
 # Check for IPv6 Address
-IPv6_enabled=$(grep -F "IPV6_ADDRESS=" $file_setupVars | cut -d'=' -f2 | cut -d'/' -f1)
+IPv6_enabled=$(grep -F 'IPV6_ADDRESS=' $file_setupVars | cut -d'=' -f2 | cut -d'/' -f1)
 # Check for IPv4 Address
-IPv4_enabled=$(grep -F "IPV4_ADDRESS=" $file_setupVars |cut -d'=' -f2 | cut -d'/' -f1)
+IPv4_enabled=$(grep -F 'IPV4_ADDRESS=' $file_setupVars |cut -d'=' -f2 | cut -d'/' -f1)
 # Check for blocking mode
-blockingMode=$(grep -F "BLOCKINGMODE=" $file_ftl | cut -d'=' -f2)
-# Revert to NULL blocking if it is not specificed
-[ -z "$blockingMode" ] && blockingMode="NULL"
+blockingMode=$(grep -F 'BLOCKINGMODE=' $file_ftl | cut -d'=' -f2)
 
 # Switch statement for blocking mode
 case "$blockingMode" in
-
-        "NULL")
-                blockingMode="#"
-        ;;
-
-        "NXDOMAIN")
-                blockingMode=""
-        ;;
-
-        "IP-NODATA-AAAA")
-                blockingMode=$IPv4_enabled
-        ;;
-
-        "IP")
-                blockingMode=$IPv4_enabled
-                [ -n "$IPv6_enabled" ] && blockingMode+=' '$IPv6_enabled
-        ;;
+	
+	NULL)
+		blockingMode='#'
+	;;
+	
+	NXDOMAIN)
+		blockingMode=''
+	;;
+	
+	# NODATA) - Unsure on DNSMASQ syntax atm.
+	# Will revert to NULL blocking (#)
+	#;;
+	
+	IP-NODATA-AAAA)
+		blockingMode=$IPv4_enabled
+	;;
+	
+	IP)
+		blockingMode=$IPv4_enabled
+		[ -n "$IPv6_enabled" ] && blockingMode+=' '$IPv6_enabled
+	;;
+	
+	*)
+		blockingMode='#'
+	;;
+	
 esac
 
 # Construct output
