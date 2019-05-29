@@ -69,32 +69,32 @@ blockingMode=$(grep -F 'BLOCKINGMODE=' $file_ftl | cut -d'=' -f2)
 
 # Switch statement for blocking mode
 case "$blockingMode" in
-	
+
 	NULL)
 		blockingMode='#'
 	;;
-	
+
 	NXDOMAIN)
 		blockingMode=''
 	;;
-	
+
 	# NODATA) - Unsure on DNSMASQ syntax atm.
 	# Will revert to NULL blocking (#)
 	#;;
-	
+
 	IP-NODATA-AAAA)
 		blockingMode=$IPv4_enabled
 	;;
-	
+
 	IP)
 		blockingMode=$IPv4_enabled
 		[ -n "$IPv6_enabled" ] && blockingMode+=' '$IPv6_enabled
 	;;
-	
+
 	*)
 		blockingMode='#'
 	;;
-	
+
 esac
 
 # Construct output
