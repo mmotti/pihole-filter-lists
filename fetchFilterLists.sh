@@ -45,20 +45,16 @@ if [ -n "$cleaned_existing_wildcards" ]; then
 	# Add filterList domains to awk array
 	# Check whether the exact wildcard entry is in filterList
 	# For each wildcard, iterate through each filterList domain and check whether it's a subdomain of the current wildcard.
-	# Existing Wildcards --> filterList
-	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev <<< "$cleaned_existing_wildcards" | sort) | rev | sort)
-	# filterList <-- Existing Wildcards
-	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index($0, d".")){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev <<< "$cleaned_existing_wildcards" | sort) | rev | sort)
+	# Existing Wildcards <--> filterList
+	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")||index($0, d".")){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev <<< "$cleaned_existing_wildcards" | sort) | rev | sort)
 	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
 fi
 
 # Process whitelist matches
 if [ -s $file_whitelist ]; then
 	echo '[i] Checking whitelist conflicts'
-	# Whitelist --> filterList
-	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
-	# filterList <-- Whitelist
-	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index($0, d".")){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
+	# Whitelist <--> filterList
+	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")||index($0, d".")){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
 	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
 fi
 
