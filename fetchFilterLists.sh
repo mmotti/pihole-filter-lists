@@ -59,6 +59,7 @@ if [ -s $file_whitelist ]; then
 	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index(d, $0".")){badDoms[d];break}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
 	# filterList <-- Whitelist
 	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0];next}{for (d in cleaned_filter_domains)if(index($0, d".")){badDoms[d];break}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
+	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
 fi
 
 # Start determining output format
