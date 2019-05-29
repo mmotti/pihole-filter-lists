@@ -18,7 +18,7 @@ filter_domains=$(curl -s https://raw.githubusercontent.com/justdomains/blocklist
 
 # Identify existing local wildcards
 echo '[i] Parsing existing wildcard config (DNSMASQ)'
-existing_wildcards=$(find $dir_dnsmasq -type f -name '*.conf' -not -name 'filter-lists.conf' -print0 |
+existing_wildcards=$(find $dir_dnsmasq -type f -name '*.conf' -not -name 'filter_lists.conf' -print0 |
 	xargs -r0 grep -hE '^address=\/.+\/(([0-9]{1,3}\.){3}[0-9]{1,3}|::|#)?$' |
 		cut -d '/' -f2 |
 			sort -u)
