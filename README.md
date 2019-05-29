@@ -11,9 +11,12 @@ It is recommended to run [gravityOptimise.sh](https://github.com/mmotti/pihole-g
 All commands will need to be entered via Terminal (PuTTY or your SSH client of choice) after logging in.
 
 ### Installation
-
-1. Copy **fetchFilterLists.sh** to **/usr/local/bin**
-2. Allow execution (`sudo chmod +x /usr/local/bin/fetchFilterLists.sh`)
+```
+sudo bash
+wget -qO /usr/local/bin/fetchFilterLists.sh https://raw.githubusercontent.com/mmotti/pihole-filter-lists/master/fetchFilterLists.sh
+chmod +x /usr/local/bin/fetchFilterLists.sh
+exit
+```
 
 ### Running the script
 Enter `fetchFilterLists.sh`
