@@ -8,10 +8,35 @@ file_whitelist='/etc/pihole/whitelist.txt'
 file_setupVars='/etc/pihole/setupVars.conf'
 file_ftl='/etc/pihole/pihole-FTL.conf'
 
+# Create an array to hold the filter sources
+declare -a filterSourceArray
+
+# Filter include options
+# Remove or change to false to exclude
+include_adguarddns=true
+include_easylist=true
+include_easyprivacy=true
+include_nocoin=true
+
+# Conditionally add each source to the array
+[ "$include_adguarddns" = true ] && filterSourceArray+=('adguarddns')
+[ "$include_easylist" = true ] && filterSourceArray+=('easylist')
+[ "$include_easyprivacy" = true ] && filterSourceArray+=('easyprivacy')
+[ "$include_nocoin" = true ] && filterSourceArray+=('nocoin')
+
+# Conditional exit
+[ "${#filterSourceArray[@]}" -eq 0 ] && echo '[i] You have not selected an input source' && exit
+
+# Construct filter source string
+filterSources=$(IFS=','; echo "${filterSourceArray[*]}")
+echo "[i] Selected filter sources: $filterSources"
+
+# Construct filter url
+filterURL="https://raw.githubusercontent.com/justdomains/blocklists/master/lists/{$filterSources}-justdomains.txt"
+
 # Fetch domains
 echo '[i] Fetching domains'
-filter_domains=$(curl -s https://raw.githubusercontent.com/justdomains/blocklists/master/lists/{adguarddns,easylist,easyprivacy,nocoin}-justdomains.txt |
-	sort -u)
+filter_domains=$(curl -s "$filterURL" | sort -u)
 
 # Conditional exit in the event that no domains are fetched
 [ -z "$filter_domains" ] && echo '[i] An error occured when fetching the filter domains' && exit
@@ -104,7 +129,7 @@ echo "$cleaned_filter_domains" |
 sudo tee $file_output > /dev/null
 
 # Some stats
-echo '[i]' $(wc -l <<< "$cleaned_filter_domains") 'domains added to' $file_output
+echo "[i] $(wc -l <<< "$cleaned_filter_domains") domains added to $file_output"
 
 # Restart FTL
 echo '[i] Restarting FTL'
