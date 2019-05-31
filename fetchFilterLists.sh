@@ -18,6 +18,49 @@ include_easylist=true
 include_easyprivacy=true
 include_nocoin=true
 
+# Functions
+function convertToFMatchPatterns() {
+	# Conditional exit
+	[ -z "$1" ] && (>&2 echo '[i] Failed to supply string for conversion') && return 1
+	# Convert exact domains (pattern source) - something.com -> ^something.com$
+	match_exact=$(sed 's/^/\^/;s/$/\$/' <<< "$1")
+	# Convert wildcard domains (pattern source) - something.com - .something.com$
+	match_wildcard=$(sed 's/^/\./;s/$/\$/' <<< "$1")
+	# Output combined match patterns
+	printf '%s\n' "$match_exact" "$match_wildcard"
+
+	return 0
+}
+function convertToFMatchTarget() {
+	# Conditional exit
+	[ -z "$1" ] && (>&2 echo '[i] Failed to supply string for conversion') && return 1
+	# Convert target - something.com -> ^something.com$
+	sed 's/^/\^/;s/$/\$/' <<< "$1"
+
+	return 0
+}
+function removeWildcardConflicts() {
+	# Conditional exit if the required arguments aren't available
+	[ -z "$1" ] && (>&2 echo '[i] Failed to supply match pattern string') && return 1
+	[ -z "$2" ] && (>&2 echo '[i] Failed to supply match target string') && return 1
+	# Gather F match strings for LTR match
+	ltr_match_patterns=$(convertToFMatchPatterns "$1")
+	ltr_match_target=$(convertToFMatchTarget "$2")
+	# Invert LTR match
+	ltr_result=$(grep -vFf <(echo "$ltr_match_patterns") <<< "$ltr_match_target" | sed 's/[\^$]//g')
+	# Conditional exit if no domains remain after match inversion
+	[ -z "$ltr_result" ] && return 0
+	# Gather F match strings for RTL match
+	rtl_match_patterns=$(convertToFMatchPatterns "$ltr_result")
+	rtl_match_target=$(convertToFMatchTarget "$1")
+	# Find conflicting wildcards
+	rtl_conflicts=$(grep -Ff <(echo "$rtl_match_patterns") <<< "$rtl_match_target" | sed 's/[\^$]//g')
+	# Identify source of match conflicts and remove
+	[ -n "$rtl_conflicts" ] && awk 'NR==FNR{Domains[$0];next}$0 in Domains{badDoms[$0]}{for(d in Domains)if(index($0, d".")==1)badDoms[d]}END{for(d in Domains)if(!(d in badDoms))print d}' <(rev <<< "$ltr_result") <(rev <<< "$rtl_conflicts") | rev | sort || echo "$ltr_result"
+
+	return 0
+}
+
 # Conditionally add each source to the array
 [ "$include_adguarddns" = true ] && filterSourceArray+=('adguarddns')
 [ "$include_easylist" = true ] && filterSourceArray+=('easylist')
@@ -67,19 +110,18 @@ fi
 # Process conflicts between filter domains and existing wildcards
 if [ -n "$cleaned_existing_wildcards" ]; then
 	echo '[i] Checking for local wildcard conflicts'
-	# Add filterList domains to awk array
-	# Check whether the exact wildcard entry is in filterList
-	# For each wildcard, iterate through each filterList domain and check whether it's a subdomain of the current wildcard.
-	# Existing Wildcards <--> filterList
-	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0]}{for (d in cleaned_filter_domains)if(index(d, $0".")==1||index($0, d".")==1){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev <<< "$cleaned_existing_wildcards" | sort) | rev | sort)
+	# Remove conflicts with existing wildcards
+	cleaned_filter_domains=$(removeWildcardConflicts "$cleaned_existing_wildcards" "$cleaned_filter_domains")
 	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
 fi
 
 # Process whitelist matches
 if [ -s $file_whitelist ]; then
 	echo '[i] Checking whitelist conflicts'
-	# Whitelist <--> filterList
-	cleaned_filter_domains=$(awk 'NR==FNR{cleaned_filter_domains[$0];next}$0 in cleaned_filter_domains{badDoms[$0]}{for (d in cleaned_filter_domains)if(index(d, $0".")==1||index($0, d".")==1){badDoms[d];continue}}END{for (d in cleaned_filter_domains)if(!(d in badDoms))print d}' <(rev <<< "$cleaned_filter_domains" | sort) <(rev $file_whitelist | sort) | rev | sort)
+	# Store whitelist in string
+	str_whitelist=$(cat "$file_whitelist")
+	# Remove conflicts with wildcards
+	cleaned_filter_domains=$(removeWildcardConflicts "$str_whitelist" "$cleaned_filter_domains")
 	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
 fi
 
@@ -93,6 +135,7 @@ IPv4_enabled=$(grep -F 'IPV4_ADDRESS=' $file_setupVars |cut -d'=' -f2 | cut -d'/
 blockingMode=$(grep -F 'BLOCKINGMODE=' $file_ftl | cut -d'=' -f2)
 
 # Switch statement for blocking mode
+# Note: There doesn't seem to be a way to force DNSMASQ to return NODATA at this time.
 case "$blockingMode" in
 
 	NULL)
@@ -102,10 +145,6 @@ case "$blockingMode" in
 	NXDOMAIN)
 		blockingMode=''
 	;;
-
-	# NODATA) - Unsure on DNSMASQ syntax atm.
-	# Will revert to NULL blocking (#)
-	#;;
 
 	IP-NODATA-AAAA)
 		blockingMode=$IPv4_enabled
