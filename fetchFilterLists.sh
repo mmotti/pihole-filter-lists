@@ -2,11 +2,13 @@
 
 # Variables
 dir_dnsmasq='/etc/dnsmasq.d'
+file_db='/etc/pihole/gravity.db'
 file_output="$dir_dnsmasq/filter_lists.conf"
 file_regex='/etc/pihole/regex.list'
 file_whitelist='/etc/pihole/whitelist.txt'
 file_setupVars='/etc/pihole/setupVars.conf'
 file_ftl='/etc/pihole/pihole-FTL.conf'
+usingDB=false
 
 # Create an array to hold the filter sources
 declare -a filterSourceArray
@@ -18,7 +20,24 @@ include_easylist=true
 include_easyprivacy=true
 include_nocoin=true
 
+# Determine if we are using the Pi-hole DB
+# Determine whether we are using Pi-hole DB
+if [[ -e "${file_db}" ]] && [[ -s "${file_db}" ]]; then
+	echo '[i] Pi-hole DB detected'
+	usingDB=true
+fi
+
 # Functions
+function fetchTable {
+
+	local table="${1}" queryStr
+
+	queryStr="Select domain FROM vw_${table};"
+
+	sqlite3 ${file_db} "${queryStr}"
+
+	return
+}
 function convertToFMatchPatterns() {
 	# Conditional exit
 	[ -z "$1" ] && (>&2 echo '[i] Failed to supply string for conversion') && return 1
@@ -99,9 +118,16 @@ cleaned_existing_wildcards=$(echo "$existing_wildcards" | rev | LC_ALL=C sort |
 	awk -F'.' 'index($0,prev FS)!=1{ print; prev=$0 }' | rev | sort)
 
 # Regex remove unnecessary domains
-if [ -s $file_regex ]; then
+if [ "$usingDB" == true ]; then
+	file_regex=$(fetchTable "regex")
+
+elif [ -s "$file_regex" ]; then
+	file_regex=$(grep '^[^#]' "$file_regex")
+
+fi
+
+if [ -n "$file_regex" ]; then
 	echo '[i] Removing regex.list conflicts'
-	file_regex=$(grep '^[^#]' $file_regex)
 	cleaned_filter_domains=$(grep -vEf <(echo "$file_regex") <<<"$cleaned_filter_domains")
 	# Conditional exit if no hosts remain after cleanup
 	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after regex removals.' && exit
@@ -116,12 +142,17 @@ if [ -n "$cleaned_existing_wildcards" ]; then
 fi
 
 # Process whitelist matches
-if [ -s $file_whitelist ]; then
+if [ "$usingDB" == true ]; then
+	file_whitelist=$(fetchTable "whitelist")
+
+elif [ -s "$file_whitelist" ]; then
+	file_whitelist=$(cat "$file_whitelist")
+fi
+
+if [ -n "$file_whitelist" ]; then
 	echo '[i] Checking whitelist conflicts'
-	# Store whitelist in string
-	str_whitelist=$(cat "$file_whitelist")
 	# Remove conflicts with wildcards
-	cleaned_filter_domains=$(removeWildcardConflicts "$str_whitelist" "$cleaned_filter_domains")
+	cleaned_filter_domains=$(removeWildcardConflicts "$file_whitelist" "$cleaned_filter_domains")
 	[ -z "$cleaned_filter_domains" ] && echo '[i] There are no domains to process after conflict removals.' && exit
 fi
 
