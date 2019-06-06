@@ -22,7 +22,7 @@ include_nocoin=true
 
 # Determine if we are using the Pi-hole DB
 # Determine whether we are using Pi-hole DB
-if [[ -e "${file_db}" ]] && [[ -s "${file_db}" ]]; then
+if [[ -s "${file_db}" ]]; then
 	echo '[i] Pi-hole DB detected'
 	usingDB=true
 fi
