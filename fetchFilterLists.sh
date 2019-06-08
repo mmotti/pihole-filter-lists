@@ -37,9 +37,9 @@ function fetchTable {
 	sqlite3 ${file_db} "${queryStr}" 2>&1
 	# Check exit status
 	status="$?"
-	[[ "${status}" -ne 0 ]]  && { (>&2 echo '[i] An error occured whilst fetching results'); exit 1; }
+	[[ "${status}" -ne 0 ]]  && { (>&2 echo '[i] An error occured whilst fetching results'); return 1; }
 
-	return
+	return 0
 }
 function convertToFMatchPatterns() {
 	# Conditional exit
@@ -78,7 +78,11 @@ function removeWildcardConflicts() {
 	# Find conflicting wildcards
 	rtl_conflicts=$(grep -Ff <(echo "${rtl_match_patterns}") <<< "${rtl_match_target}" | sed 's/[\^$]//g')
 	# Identify source of match conflicts and remove
-	[[ -n "${rtl_conflicts}" ]] && awk 'NR==FNR{Domains[$0];next}$0 in Domains{badDoms[$0]}{for(d in Domains)if(index($0, d".")==1)badDoms[d]}END{for(d in Domains)if(!(d in badDoms))print d}' <(rev <<< "${ltr_result}") <(rev <<< "${rtl_conflicts}") | rev | sort || echo "${ltr_result}"
+	if [[ -n "${rtl_conflicts}" ]]; then
+		awk 'NR==FNR{Domains[$0];next}$0 in Domains{badDoms[$0]}{for(d in Domains)if(index($0, d".")==1)badDoms[d]}END{for(d in Domains)if(!(d in badDoms))print d}' <(rev <<< "${ltr_result}") <(rev <<< "${rtl_conflicts}") | rev | sort
+	else
+		echo "${ltr_result}"
+	fi
 
 	return 0
 }
@@ -90,7 +94,7 @@ function removeWildcardConflicts() {
 [[ "${include_nocoin}" = true ]] && filterSourceArray+=('nocoin')
 
 # Conditional exit
-[ "${#filterSourceArray[@]}" -eq 0 ] && { echo '[i] You have not selected an input source'; exit; }
+[ "${#filterSourceArray[@]}" -eq 0 ] && { echo '[i] You have not selected an input source'; exit 1; }
 
 # Construct filter source string
 filterSources=$(IFS=','; echo "${filterSourceArray[*]}")
@@ -104,7 +108,7 @@ echo '[i] Fetching domains'
 filter_domains=$(curl -s "${filterURL}" | sort -u)
 
 # Conditional exit in the event that no domains are fetched
-[[ -z "${filter_domains}" ]] && { echo '[i] An error occured when fetching the filter domains'; exit; }
+[[ -z "${filter_domains}" ]] && { echo '[i] An error occured when fetching the filter domains'; exit 1; }
 
 # Identify existing local wildcards
 echo '[i] Parsing existing wildcard config (DNSMASQ)'
@@ -133,7 +137,7 @@ if [[ -n "${file_regex}" ]]; then
 	echo '[i] Removing regex.list conflicts'
 	cleaned_filter_domains=$(grep -vEf <(echo "${file_regex}") <<<"${cleaned_filter_domains}")
 	# Conditional exit if no hosts remain after cleanup
-	[[ -z "${cleaned_filter_domains}" ]] && { echo '[i] There are no domains to process after regex removals.'; exit; }
+	[[ -z "${cleaned_filter_domains}" ]] && { echo '[i] There are no domains to process after regex removals.'; exit 1; }
 fi
 
 # Process conflicts between filter domains and existing wildcards
@@ -141,7 +145,7 @@ if [[ -n "${cleaned_existing_wildcards}" ]]; then
 	echo '[i] Checking for local wildcard conflicts'
 	# Remove conflicts with existing wildcards
 	cleaned_filter_domains=$(removeWildcardConflicts "${cleaned_existing_wildcards}" "${cleaned_filter_domains}")
-	[[ -z "${cleaned_filter_domains}" ]] && { echo '[i] There are no domains to process after conflict removals.'; exit; }
+	[[ -z "${cleaned_filter_domains}" ]] && { echo '[i] There are no domains to process after conflict removals.'; exit 1; }
 fi
 
 # Process whitelist matches
@@ -156,7 +160,7 @@ if [[ -n "${file_whitelist}" ]]; then
 	echo '[i] Checking whitelist conflicts'
 	# Remove conflicts with wildcards
 	cleaned_filter_domains=$(removeWildcardConflicts "${file_whitelist}" "${cleaned_filter_domains}")
-	[[ -z "${cleaned_filter_domains}" ]] && { echo '[i] There are no domains to process after conflict removals.'; exit; }
+	[[ -z "${cleaned_filter_domains}" ]] && { echo '[i] There are no domains to process after conflict removals.'; exit 1; }
 fi
 
 # Start determining output format
